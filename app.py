@@ -67,8 +67,8 @@ if st.button("Check Availability Now", type="primary") and manual_plate:
                 # Click the 'Search' button
                 page.locator("button:has-text('Search')").click()
                 
-                # --- THE FIX: Handle strict mode by grabbing the FIRST instance ---
-                page.locator("text='Personalized plate search results'").first.wait_for(timeout=15000)
+                # --- THE FIX: A bulletproof hard pause instead of looking for hidden elements ---
+                page.wait_for_timeout(4000) # Wait exactly 4 seconds for the server to reply
                 
                 # Grab all the text on the page to analyze it
                 page_text = page.inner_text("body").lower()
