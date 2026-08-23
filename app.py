@@ -61,35 +61,31 @@ if st.button("Check Availability Now", type="primary") and manual_plate:
         with sync_playwright() as p:
             # Launch the hidden browser using the chosen proxy
             browser = p.chromium.launch(headless=True, proxy=proxy_config)
-            
-            # Create a new browser context that accepts popup windows/new tabs
-            context = browser.new_context()
-            page = context.new_page()
+            page = browser.new_page()
             
             # Go to the main WA DOL personalized plates informational page
             page.goto("https://dol.wa.gov/vehicles-and-boats/vehicles/license-plates/get-custom-plates/personalized-plates", timeout=60000)
             
-            # Click the specific text link you requested and wait for the new page to load
-            with context.expect_page() as new_page_info:
-                page.click("a:has-text('Check to see if your plate is available')")
+            # Extract the URL directly from the link instead of relying on popup tabs
+            link_locator = page.locator("a:has-text('Check to see if your plate is available')")
+            form_url = link_locator.get_attribute("href")
             
-            # Switch to the new tab/window that opened
-            search_page = new_page_info.value
-            search_page.wait_for_load_state()
+            # Navigate directly to the extracted form URL
+            page.goto(form_url, timeout=60000)
             
             # --- START OF ACTUAL DOL INTERACTION ---
-            # Wait for the plate input box to appear on the new page and type the plate
-            search_page.wait_for_selector("input#SearchText") 
-            search_page.fill("input#SearchText", manual_plate)
+            # Wait for the plate input box to appear and type the plate
+            page.wait_for_selector("input#SearchText", timeout=15000) 
+            page.fill("input#SearchText", manual_plate)
             
             # Click the 'Search' button
-            search_page.click("button:has-text('Search')")
+            page.click("button:has-text('Search')")
             
             # Wait for either an error or a success alert to load on the page
-            search_page.wait_for_selector(".validation-summary-errors, .alert-success, .alert-danger", timeout=15000)
+            page.wait_for_selector(".validation-summary-errors, .alert-success, .alert-danger", timeout=15000)
             
             # Grab all the text on the page to analyze it
-            page_text = search_page.inner_text("body").lower()
+            page_text = page.inner_text("body").lower()
             
             # Determine the status based on the 4 possible return messages
             if "is available right now" in page_text:
