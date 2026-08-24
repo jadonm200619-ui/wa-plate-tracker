@@ -23,7 +23,6 @@ def run_automated_checks():
 
     print(f"Found {len(requests)} active requests. Starting engine...")
 
-    # Fallback list of proxies if environment variable isn't parsed as a list
     proxy_server = os.environ.get("PROXY_SERVER", "http://31.59.20.176:6754")
     proxy_user = os.environ.get("PROXY_USER", "rzzaqqtt")
     proxy_pass = os.environ.get("PROXY_PASS", "t01ddiw0xm8n")
