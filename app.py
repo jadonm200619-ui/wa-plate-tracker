@@ -4,6 +4,7 @@ import random
 import time
 import datetime
 from playwright.sync_api import sync_playwright
+from supabase import create_client, Client
 
 # Install the browser on the cloud server
 os.system("playwright install chromium")
@@ -17,6 +18,18 @@ Track Washington personalized license plate availability automatically.
 Enter your email, set your schedule, and receive email alerts the moment a plate becomes available.
 """)
 
+# --- Initialize Database Connection ---
+@st.cache_resource
+def init_supabase() -> Client:
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
+    return create_client(url, key)
+
+try:
+    supabase = init_supabase()
+except Exception as e:
+    st.error("Database connection failed. Please check your Streamlit Secrets.")
+
 # --- Tab Navigation: Subscribe vs. Opt Out ---
 tab_track, tab_optout = st.tabs(["📌 Track Plates", "🛑 Opt Out / Unsubscribe"])
 
@@ -28,7 +41,7 @@ with tab_track:
         email = st.text_input("Your Email Address", placeholder="name@example.com")
         plates = st.text_area(
             "Plates to Track (one per line, up to 10 plates, max 7 letters)", 
-            placeholder="LEXUS12\nIS350C\nTEST123"
+            placeholder="LEXUS12\nIS350C\nJM"
         )
         
         # Frequency options
@@ -48,17 +61,28 @@ with tab_track:
         if submitted:
             raw_plates = [p.strip().upper() for p in plates.split('\n') if p.strip()]
             if email and raw_plates and check_time:
-                # Format the selected time to look clean (e.g., "02:30 PM")
                 formatted_time = check_time.strftime("%I:%M %p")
                 
-                st.success(
-                    f"✅ **Tracking Confirmed!**\n\n"
-                    f"- **Email:** {email}\n"
-                    f"- **Plates ({len(raw_plates[:10])}):** {', '.join(raw_plates[:10])}\n"
-                    f"- **Frequency:** {frequency}\n"
-                    f"- **Time:** {formatted_time}"
-                )
-                # Note: Database integration to persist this record connects here.
+                try:
+                    # Write each plate as a separate record in the database
+                    for plate in raw_plates[:10]:
+                        supabase.table("plate_requests").insert({
+                            "email": email,
+                            "plate_string": plate,
+                            "frequency": frequency,
+                            "check_time": formatted_time,
+                            "is_active": True
+                        }).execute()
+                        
+                    st.success(
+                        f"✅ **Tracking Confirmed!**\n\n"
+                        f"- **Email:** {email}\n"
+                        f"- **Plates ({len(raw_plates[:10])}):** {', '.join(raw_plates[:10])}\n"
+                        f"- **Frequency:** {frequency}\n"
+                        f"- **Time:** {formatted_time}"
+                    )
+                except Exception as e:
+                    st.error(f"Failed to save request to the database. Error: {e}")
             else:
                 st.error("Please provide a valid email, at least one plate, and select a check time.")
 
@@ -75,8 +99,12 @@ with tab_optout:
         
         if optout_submitted:
             if optout_email:
-                st.success(f"Tracking has been cancelled for **{optout_email}**. You will no longer receive check alerts.")
-                # Note: Database deletion/deactivation query connects here.
+                try:
+                    # Deactivate all records matching this email
+                    supabase.table("plate_requests").update({"is_active": False}).eq("email", optout_email).execute()
+                    st.success(f"Tracking has been cancelled for **{optout_email}**. You will no longer receive check alerts.")
+                except Exception as e:
+                    st.error(f"Failed to update database. Error: {e}")
             else:
                 st.error("Please enter the email address you wish to unsubscribe.")
 
@@ -120,7 +148,6 @@ if st.button("Check Availability Now", type="primary") and manual_plates_input:
     
     st.info(f"Connected securely via residential proxy ({chosen_proxy['server']}).")
     
-    # Live visual status container
     status_container = st.status("Initializing automated check...", expanded=True)
     results_display = st.container()
     
@@ -140,24 +167,18 @@ if st.button("Check Availability Now", type="primary") and manual_plates_input:
                 )
                 
                 try:
-                    # Navigate fresh to the search portal
                     page.goto("https://fortress.wa.gov/dol/extdriveses/ESP/NoLogon/?Link=PersonalizedPlate", timeout=60000)
                     page.wait_for_load_state("networkidle", timeout=15000)
                     
-                    # Fill the 7-character plate input
                     plate_input = page.locator("input[maxlength='7']")
                     plate_input.wait_for(timeout=10000)
                     plate_input.fill(clean_plate)
                     
-                    # Submit search
                     page.locator("button:has-text('Search')").click()
-                    
-                    # Wait for response render
                     page.wait_for_timeout(4000)
                     
                     page_text = page.inner_text("body").lower()
                     
-                    # Classify outcome
                     if "is available right now" in page_text:
                         plate_status = f"✅ **AVAILABLE:** `{clean_plate}` is available right now."
                     elif "is not available" in page_text:
@@ -174,7 +195,6 @@ if st.button("Check Availability Now", type="primary") and manual_plates_input:
                 except Exception as loop_error:
                     results_display.error(f"⚠️ **ERROR:** Failed to check `{clean_plate}` ({loop_error})")
                 
-                # Brief pause between scrapes
                 if index < total_plates:
                     status_container.update(label=f"Pausing before next lookup...", state="running")
                     time.sleep(2)
