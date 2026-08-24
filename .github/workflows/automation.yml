@@ -26,4 +26,4 @@ jobs:
         env:
           SUPABASE_KEY: "${{ secrets.SUPABASE_KEY }}"
           RESEND_API_KEY: "${{ secrets.RESEND_API_KEY }}"
-        run: python checker.py
+        run: python run_checker.py
