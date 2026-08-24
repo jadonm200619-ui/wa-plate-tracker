@@ -2,7 +2,6 @@ import os
 import streamlit as st
 import random
 import time
-import datetime
 from playwright.sync_api import sync_playwright
 from supabase import create_client, Client
 import resend
@@ -55,18 +54,20 @@ with tab_track:
             ["Once a day", "Every other day", "Once a week"]
         )
         
-        check_time = st.time_input(
-            "Preferred Check Time (Pacific Time):", 
-            value=datetime.time(12, 0)
-        )
+        # 24-Hour Dropdown Selection
+        hour_options = [
+            "12:00 AM (Midnight)", "01:00 AM", "02:00 AM", "03:00 AM", "04:00 AM", "05:00 AM",
+            "06:00 AM", "07:00 AM", "08:00 AM", "09:00 AM", "10:00 AM", "11:00 AM",
+            "12:00 PM (Noon)", "01:00 PM", "02:00 PM", "03:00 PM", "04:00 PM", "05:00 PM",
+            "06:00 PM", "07:00 PM", "08:00 PM", "09:00 PM", "10:00 PM", "11:00 PM"
+        ]
+        selected_hour = st.selectbox("Preferred Check Hour (Pacific Time):", hour_options)
         
         submitted = st.form_submit_button("Start Tracking", type="primary")
         
         if submitted:
             raw_plates = [p.strip().upper() for p in plates.split('\n') if p.strip()]
-            if email and raw_plates and check_time:
-                formatted_time = check_time.strftime("%I:%M %p")
-                
+            if email and raw_plates and selected_hour:
                 try:
                     # 1. Save to Database
                     for plate in raw_plates[:10]:
@@ -74,7 +75,7 @@ with tab_track:
                             "email": email,
                             "plate_string": plate,
                             "frequency": frequency,
-                            "check_time": formatted_time,
+                            "check_time": selected_hour,
                             "is_active": True
                         }).execute()
                         
@@ -86,7 +87,7 @@ with tab_track:
                         {''.join([f'<li><strong>{p}</strong></li>' for p in raw_plates[:10]])}
                     </ul>
                     <p><strong>Frequency:</strong> {frequency}</p>
-                    <p><strong>Time:</strong> {formatted_time}</p>
+                    <p><strong>Time Slot:</strong> {selected_hour}</p>
                     <p>We'll email you the second one becomes available.</p>
                     """
                     
@@ -101,12 +102,12 @@ with tab_track:
                         f"✅ **Tracking Confirmed!** Confirmation email sent to **{email}**.\n\n"
                         f"- **Plates ({len(raw_plates[:10])}):** {', '.join(raw_plates[:10])}\n"
                         f"- **Frequency:** {frequency}\n"
-                        f"- **Time:** {formatted_time}"
+                        f"- **Time Slot:** {selected_hour}"
                     )
                 except Exception as e:
                     st.error(f"Failed to process request. Make sure you are using your verified Resend email address. Error: {e}")
             else:
-                st.error("Please provide a valid email, at least one plate, and select a check time.")
+                st.error("Please provide a valid email, at least one plate, and select an hour.")
 
 # ==========================================
 # TAB 2: OPT-OUT / UNSUBSCRIBE FORM
