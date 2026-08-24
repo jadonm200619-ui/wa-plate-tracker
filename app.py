@@ -159,6 +159,12 @@ if st.button("Check Availability Now", type="primary") and manual_plates_input:
             
             total_plates = len(plates_to_check)
             
+            # --- OPTIMIZATION: Load the page ONCE before the loop starts ---
+            status_container.update(label="Connecting to WA DOL server...", state="running")
+            page.goto("https://fortress.wa.gov/dol/extdriveses/ESP/NoLogon/?Link=PersonalizedPlate", timeout=60000)
+            page.wait_for_load_state("networkidle", timeout=15000)
+            
+            # Now we just fire the plates into the existing text box in rapid succession
             for index, manual_plate in enumerate(plates_to_check, start=1):
                 clean_plate = manual_plate[:7]
                 status_container.update(
@@ -167,11 +173,10 @@ if st.button("Check Availability Now", type="primary") and manual_plates_input:
                 )
                 
                 try:
-                    page.goto("https://fortress.wa.gov/dol/extdriveses/ESP/NoLogon/?Link=PersonalizedPlate", timeout=60000)
-                    page.wait_for_load_state("networkidle", timeout=15000)
-                    
                     plate_input = page.locator("input[maxlength='7']")
                     plate_input.wait_for(timeout=10000)
+                    
+                    # Playwright's fill() automatically clears any existing text first!
                     plate_input.fill(clean_plate)
                     
                     page.locator("button:has-text('Search')").click()
