@@ -5,7 +5,7 @@ from playwright.sync_api import sync_playwright
 from supabase import create_client, Client
 import resend
 
-# Grab secrets directly from GitHub Actions environment variables
+# Grab secrets directly from GitHub environment variables
 SUPABASE_URL = "https://ywqbkgnkoiagimbneklv.supabase.co"
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
