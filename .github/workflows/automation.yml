@@ -1,0 +1,31 @@
+name: Hourly Plate Checker
+
+on:
+  schedule:
+    - cron: '0 * * * *' # Runs at the top of every hour
+  workflow_dispatch: # Allows us to manually trigger it for testing
+
+jobs:
+  run-scraper:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+
+      - name: Build Secrets File
+        run: |
+          mkdir -p .streamlit
+          echo "${{ secrets.STREAMLIT_SECRETS }}" > .streamlit/secrets.toml
+
+      - name: Run Engine
+        run: python checker.py
