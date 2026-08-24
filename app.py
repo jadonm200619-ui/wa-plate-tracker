@@ -2,6 +2,7 @@ import os
 import streamlit as st
 import random
 import time
+import datetime
 from playwright.sync_api import sync_playwright
 
 # Install the browser on the cloud server
@@ -36,30 +37,26 @@ with tab_track:
             ["Once a day", "Every other day", "Once a week"]
         )
         
-        # Time of day options from 12:00 PM to 12:00 AM
-        time_options = [
-            "12:00 PM", "1:00 PM", "2:00 PM", "3:00 PM", "4:00 PM", 
-            "5:00 PM", "6:00 PM", "7:00 PM", "8:00 PM", "9:00 PM", 
-            "10:00 PM", "11:00 PM", "12:00 AM"
-        ]
-        check_times = st.multiselect(
-            "Preferred Check Time(s) (Pacific Time):", 
-            time_options,
-            default=["12:00 PM"]
+        # Custom exact time input (defaults to 12:00 PM)
+        check_time = st.time_input(
+            "Preferred Check Time (Pacific Time):", 
+            value=datetime.time(12, 0)
         )
         
         submitted = st.form_submit_button("Start Tracking", type="primary")
         
         if submitted:
             raw_plates = [p.strip().upper() for p in plates.split('\n') if p.strip()]
-            if email and raw_plates and check_times:
-                selected_times = ", ".join(check_times)
+            if email and raw_plates and check_time:
+                # Format the selected time to look clean (e.g., "02:30 PM")
+                formatted_time = check_time.strftime("%I:%M %p")
+                
                 st.success(
                     f"✅ **Tracking Confirmed!**\n\n"
                     f"- **Email:** {email}\n"
                     f"- **Plates ({len(raw_plates[:10])}):** {', '.join(raw_plates[:10])}\n"
                     f"- **Frequency:** {frequency}\n"
-                    f"- **Time(s):** {selected_times}"
+                    f"- **Time:** {formatted_time}"
                 )
                 # Note: Database integration to persist this record connects here.
             else:
