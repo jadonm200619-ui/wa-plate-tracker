@@ -1,19 +1,20 @@
 import os
 import time
-import random
 from playwright.sync_api import sync_playwright
 from supabase import create_client, Client
 import resend
 
-# Grab secrets directly from GitHub environment variables
+# Read environment variables directly from GitHub Actions
 SUPABASE_URL = "https://ywqbkgnkoiagimbneklv.supabase.co"
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
 
+# Initialize clients
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 resend.api_key = RESEND_API_KEY
 
 def run_automated_checks():
+    # Fetch active plate requests from Supabase
     response = supabase.table("plate_requests").select("*").eq("is_active", True).execute()
     requests = response.data
     
@@ -21,8 +22,9 @@ def run_automated_checks():
         print("No active plate requests to check.")
         return
 
-    print(f"Found {len(requests)} active requests. Starting engine...")
+    print(f"Found {len(requests)} active requests. Starting background engine...")
 
+    # Proxy configuration
     proxy_server = os.environ.get("PROXY_SERVER", "http://31.59.20.176:6754")
     proxy_user = os.environ.get("PROXY_USER", "rzzaqqtt")
     proxy_pass = os.environ.get("PROXY_PASS", "t01ddiw0xm8n")
