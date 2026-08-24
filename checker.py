@@ -1,18 +1,19 @@
 import os
 import time
 import random
-import streamlit as st
 from playwright.sync_api import sync_playwright
 from supabase import create_client, Client
 import resend
 
-# 1. Connect to Database and Email using Streamlit Secrets
-supabase: Client = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
-resend.api_key = st.secrets["RESEND_API_KEY"]
-proxy_list = st.secrets["proxies"]
+# Read secrets directly from environment variables provided by GitHub Actions
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+resend.api_key = RESEND_API_KEY
 
 def run_automated_checks():
-    # 2. Pull all active plate requests from Supabase
     response = supabase.table("plate_requests").select("*").eq("is_active", True).execute()
     requests = response.data
     
@@ -22,15 +23,17 @@ def run_automated_checks():
 
     print(f"Found {len(requests)} active requests. Starting engine...")
 
-    # 3. Setup Proxy
-    chosen_proxy = random.choice(proxy_list)
+    # Fallback list of proxies if environment variable isn't parsed as a list
+    proxy_server = os.environ.get("PROXY_SERVER", "http://31.59.20.176:6754")
+    proxy_user = os.environ.get("PROXY_USER", "rzzaqqtt")
+    proxy_pass = os.environ.get("PROXY_PASS", "t01ddiw0xm8n")
+
     proxy_config = {
-        "server": chosen_proxy["server"],
-        "username": chosen_proxy["username"],
-        "password": chosen_proxy["password"]
+        "server": proxy_server,
+        "username": proxy_user,
+        "password": proxy_pass
     }
 
-    # 4. Launch Headless Browser
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, proxy=proxy_config)
         page = browser.new_page()
@@ -39,7 +42,6 @@ def run_automated_checks():
         page.goto("https://fortress.wa.gov/dol/extdriveses/ESP/NoLogon/?Link=PersonalizedPlate", timeout=60000)
         page.wait_for_load_state("networkidle", timeout=15000)
 
-        # 5. Check each plate in the database
         for req in requests:
             plate = req["plate_string"]
             user_email = req["email"]
@@ -53,14 +55,13 @@ def run_automated_checks():
                 plate_input.fill(plate)
                 
                 page.locator("button:has-text('Search')").click()
-                page.wait_for_timeout(1000) # 1-second rapid pause
+                page.wait_for_timeout(1000)
                 
                 page_text = page.inner_text("body").lower()
 
                 if "is available right now" in page_text:
                     print(f"🚨 MATCH FOUND: {plate} is AVAILABLE!")
                     
-                    # 6. Fire the Email Alert!
                     email_html = f"""
                     <h2>🎉 Great News!</h2>
                     <p>The Washington personalized plate <strong>{plate}</strong> is currently AVAILABLE!</p>
@@ -74,7 +75,6 @@ def run_automated_checks():
                         "html": email_html
                     })
                     
-                    # 7. Turn off tracking for this specific plate so we don't spam the user
                     supabase.table("plate_requests").update({"is_active": False}).eq("id", req_id).execute()
                 else:
                     print(f"Taken/Unavailable: {plate}")
