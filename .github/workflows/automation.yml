@@ -2,8 +2,8 @@ name: Hourly Plate Checker
 
 on:
   schedule:
-    - cron: '0 * * * *' # Runs at the top of every hour
-  workflow_dispatch: # Allows us to manually trigger it for testing
+    - cron: '0 * * * *'
+  workflow_dispatch:
 
 jobs:
   run-scraper:
@@ -22,12 +22,8 @@ jobs:
           pip install -r requirements.txt
           playwright install chromium
 
-      - name: Build Secrets File
-        env:
-          MY_SECRETS: ${{ secrets.STREAMLIT_SECRETS }}
-        run: |
-          mkdir -p .streamlit
-          echo "$MY_SECRETS" > .streamlit/secrets.toml
-
       - name: Run Engine
+        env:
+          SUPABASE_KEY: "${{ secrets.SUPABASE_KEY }}"
+          RESEND_API_KEY: "${{ secrets.RESEND_API_KEY }}"
         run: python checker.py
