@@ -5,6 +5,7 @@ import time
 import datetime
 from playwright.sync_api import sync_playwright
 from supabase import create_client, Client
+import resend
 
 # Install the browser on the cloud server
 os.system("playwright install chromium")
@@ -18,7 +19,7 @@ Track Washington personalized license plate availability automatically.
 Enter your email, set your schedule, and receive email alerts the moment a plate becomes available.
 """)
 
-# --- Initialize Database Connection ---
+# --- Initialize Database & Email Connections ---
 @st.cache_resource
 def init_supabase() -> Client:
     url = st.secrets["SUPABASE_URL"]
@@ -29,6 +30,11 @@ try:
     supabase = init_supabase()
 except Exception as e:
     st.error("Database connection failed. Please check your Streamlit Secrets.")
+
+try:
+    resend.api_key = st.secrets["RESEND_API_KEY"]
+except Exception as e:
+    st.error("Resend connection failed. Please check your Streamlit Secrets.")
 
 # --- Tab Navigation: Subscribe vs. Opt Out ---
 tab_track, tab_optout = st.tabs(["📌 Track Plates", "🛑 Opt Out / Unsubscribe"])
@@ -44,13 +50,11 @@ with tab_track:
             placeholder="LEXUS12\nIS350C\nJM"
         )
         
-        # Frequency options
         frequency = st.selectbox(
             "How often should we check?",
             ["Once a day", "Every other day", "Once a week"]
         )
         
-        # Custom exact time input (defaults to 12:00 PM)
         check_time = st.time_input(
             "Preferred Check Time (Pacific Time):", 
             value=datetime.time(12, 0)
@@ -64,7 +68,7 @@ with tab_track:
                 formatted_time = check_time.strftime("%I:%M %p")
                 
                 try:
-                    # Write each plate as a separate record in the database
+                    # 1. Save to Database
                     for plate in raw_plates[:10]:
                         supabase.table("plate_requests").insert({
                             "email": email,
@@ -74,15 +78,33 @@ with tab_track:
                             "is_active": True
                         }).execute()
                         
+                    # 2. Send Confirmation Email via Resend
+                    email_html = f"""
+                    <h2>🚗 WA Plate Tracker Confirmation</h2>
+                    <p>You are all set! We will automatically check the WA DOL website for the following plates:</p>
+                    <ul>
+                        {''.join([f'<li><strong>{p}</strong></li>' for p in raw_plates[:10]])}
+                    </ul>
+                    <p><strong>Frequency:</strong> {frequency}</p>
+                    <p><strong>Time:</strong> {formatted_time}</p>
+                    <p>We'll email you the second one becomes available.</p>
+                    """
+                    
+                    resend.Emails.send({
+                        "from": "onboarding@resend.dev",
+                        "to": email,
+                        "subject": "✅ WA Plate Tracker - Tracking Confirmed!",
+                        "html": email_html
+                    })
+                        
                     st.success(
-                        f"✅ **Tracking Confirmed!**\n\n"
-                        f"- **Email:** {email}\n"
+                        f"✅ **Tracking Confirmed!** Confirmation email sent to **{email}**.\n\n"
                         f"- **Plates ({len(raw_plates[:10])}):** {', '.join(raw_plates[:10])}\n"
                         f"- **Frequency:** {frequency}\n"
                         f"- **Time:** {formatted_time}"
                     )
                 except Exception as e:
-                    st.error(f"Failed to save request to the database. Error: {e}")
+                    st.error(f"Failed to process request. Make sure you are using your verified Resend email address. Error: {e}")
             else:
                 st.error("Please provide a valid email, at least one plate, and select a check time.")
 
@@ -100,7 +122,6 @@ with tab_optout:
         if optout_submitted:
             if optout_email:
                 try:
-                    # Deactivate all records matching this email
                     supabase.table("plate_requests").update({"is_active": False}).eq("email", optout_email).execute()
                     st.success(f"Tracking has been cancelled for **{optout_email}**. You will no longer receive check alerts.")
                 except Exception as e:
@@ -159,12 +180,10 @@ if st.button("Check Availability Now", type="primary") and manual_plates_input:
             
             total_plates = len(plates_to_check)
             
-            # --- OPTIMIZATION: Load the page ONCE before the loop starts ---
             status_container.update(label="Connecting to WA DOL server...", state="running")
             page.goto("https://fortress.wa.gov/dol/extdriveses/ESP/NoLogon/?Link=PersonalizedPlate", timeout=60000)
             page.wait_for_load_state("networkidle", timeout=15000)
             
-            # Now we just fire the plates into the existing text box in rapid succession
             for index, manual_plate in enumerate(plates_to_check, start=1):
                 clean_plate = manual_plate[:7]
                 status_container.update(
@@ -175,13 +194,9 @@ if st.button("Check Availability Now", type="primary") and manual_plates_input:
                 try:
                     plate_input = page.locator("input[maxlength='7']")
                     plate_input.wait_for(timeout=10000)
-                    
-                    # Playwright's fill() automatically clears any existing text first
                     plate_input.fill(clean_plate)
-                    
                     page.locator("button:has-text('Search')").click()
                     
-                    # --- FAST MODE: Hard pause shortened to exactly 1 second ---
                     page.wait_for_timeout(1000)
                     
                     page_text = page.inner_text("body").lower()
@@ -204,7 +219,7 @@ if st.button("Check Availability Now", type="primary") and manual_plates_input:
                 
                 if index < total_plates:
                     status_container.update(label=f"Pausing before next lookup...", state="running")
-                    time.sleep(1) # Exactly 1 second pause between plates
+                    time.sleep(1)
             
             browser.close()
             status_container.update(label="All plate checks completed successfully!", state="complete", expanded=False)
