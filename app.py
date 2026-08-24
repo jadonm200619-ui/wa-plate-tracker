@@ -176,13 +176,13 @@ if st.button("Check Availability Now", type="primary") and manual_plates_input:
                     plate_input = page.locator("input[maxlength='7']")
                     plate_input.wait_for(timeout=10000)
                     
-                    # Playwright's fill() automatically clears any existing text first!
+                    # Playwright's fill() automatically clears any existing text first
                     plate_input.fill(clean_plate)
                     
                     page.locator("button:has-text('Search')").click()
                     
-                    # Hard pause shortened from 4000 to 2000
-                    page.wait_for_timeout(2000)
+                    # --- FAST MODE: Hard pause shortened to exactly 1 second ---
+                    page.wait_for_timeout(1000)
                     
                     page_text = page.inner_text("body").lower()
                     
@@ -204,7 +204,7 @@ if st.button("Check Availability Now", type="primary") and manual_plates_input:
                 
                 if index < total_plates:
                     status_container.update(label=f"Pausing before next lookup...", state="running")
-                    time.sleep(1) # Pause shortened from 2 to 1
+                    time.sleep(1) # Exactly 1 second pause between plates
             
             browser.close()
             status_container.update(label="All plate checks completed successfully!", state="complete", expanded=False)
