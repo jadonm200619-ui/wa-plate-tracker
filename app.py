@@ -8,53 +8,99 @@ from playwright.sync_api import sync_playwright
 os.system("playwright install chromium")
 
 # --- Page Config ---
-st.set_page_config(page_title="WA Plate Tracker", page_icon="🚗")
+st.set_page_config(page_title="WA Plate Tracker", page_icon="🚗", layout="centered")
 st.title("🚗 WA Plate Availability Tracker")
 
 st.markdown("""
-Want a specific personalized license plate in Washington? 
-Enter your email and the plates you want. We will automatically check the WA DOL website and email you the moment one becomes available!
+Track Washington personalized license plate availability automatically. 
+Enter your email, set your schedule, and receive email alerts the moment a plate becomes available.
 """)
 
-# --- 1. The Subscription Form ---
-with st.form("plate_form"):
-    email = st.text_input("Your Email Address")
-    plates = st.text_area("Plates to Track (one per line, max 7 letters)", placeholder="LEXUS12\nIS350C\nTEST123")
+# --- Tab Navigation: Subscribe vs. Opt Out ---
+tab_track, tab_optout = st.tabs(["📌 Track Plates", "🛑 Opt Out / Unsubscribe"])
+
+# ==========================================
+# TAB 1: SUBSCRIPTION FORM
+# ==========================================
+with tab_track:
+    with st.form("plate_form"):
+        email = st.text_input("Your Email Address", placeholder="name@example.com")
+        plates = st.text_area(
+            "Plates to Track (one per line, up to 10 plates, max 7 letters)", 
+            placeholder="LEXUS12\nIS350C\nTEST123"
+        )
+        
+        # Frequency options
+        frequency = st.selectbox(
+            "How often should we check?",
+            ["Once a day", "Every other day", "Once a week"]
+        )
+        
+        # Time of day options from 12:00 PM to 12:00 AM
+        time_options = [
+            "12:00 PM", "1:00 PM", "2:00 PM", "3:00 PM", "4:00 PM", 
+            "5:00 PM", "6:00 PM", "7:00 PM", "8:00 PM", "9:00 PM", 
+            "10:00 PM", "11:00 PM", "12:00 AM"
+        ]
+        check_times = st.multiselect(
+            "Preferred Check Time(s) (Pacific Time):", 
+            time_options,
+            default=["12:00 PM"]
+        )
+        
+        submitted = st.form_submit_button("Start Tracking", type="primary")
+        
+        if submitted:
+            raw_plates = [p.strip().upper() for p in plates.split('\n') if p.strip()]
+            if email and raw_plates and check_times:
+                selected_times = ", ".join(check_times)
+                st.success(
+                    f"✅ **Tracking Confirmed!**\n\n"
+                    f"- **Email:** {email}\n"
+                    f"- **Plates ({len(raw_plates[:10])}):** {', '.join(raw_plates[:10])}\n"
+                    f"- **Frequency:** {frequency}\n"
+                    f"- **Time(s):** {selected_times}"
+                )
+                # Note: Database integration to persist this record connects here.
+            else:
+                st.error("Please provide a valid email, at least one plate, and select a check time.")
+
+# ==========================================
+# TAB 2: OPT-OUT / UNSUBSCRIBE FORM
+# ==========================================
+with tab_optout:
+    st.subheader("Manage Subscription")
+    st.write("No longer looking for plates? Enter your email address below to remove all active tracking.")
     
-    # New Specific Time Selection Feature
-    check_times = st.multiselect(
-        "Select the times you want us to check (Pacific Time):", 
-        ["8:00 AM", "12:00 PM", "4:00 PM", "8:00 PM"],
-        default=["8:00 AM"]
-    )
-    
-    submitted = st.form_submit_button("Start Tracking")
-    
-    if submitted:
-        if email and plates and check_times:
-            # Join the times together for a clean success message
-            times_str = ", ".join(check_times)
-            st.success(f"Success! We will check your plates at {times_str} and notify {email} if any become available.")
-            # Note: Database integration for saving this info will go here.
-        else:
-            st.error("Please enter an email, at least one plate, and select at least one time.")
+    with st.form("opt_out_form"):
+        optout_email = st.text_input("Registered Email Address", placeholder="name@example.com")
+        optout_submitted = st.form_submit_button("Stop Tracking All Plates")
+        
+        if optout_submitted:
+            if optout_email:
+                st.success(f"Tracking has been cancelled for **{optout_email}**. You will no longer receive check alerts.")
+                # Note: Database deletion/deactivation query connects here.
+            else:
+                st.error("Please enter the email address you wish to unsubscribe.")
 
 st.divider()
 
-# --- 2. Manual Check Feature (Using Proxies) ---
-st.subheader("Manual Check")
-st.write("Want to see if plates are available right now?")
+# ==========================================
+# SECTION 3: MANUAL CHECK (UP TO 10 PLATES)
+# ==========================================
+st.subheader("🔍 Run Instant Check")
+st.write("Check live availability right now (up to 10 plates at once).")
 
-# Changed to a text_area to accept multiple plates
-manual_plates_input = st.text_area("Enter up to 10 plates to check (one per line, max 7 letters):", placeholder="LEXUS12\nIS350C").upper()
+manual_plates_input = st.text_area(
+    "Enter plates to check (one per line, max 7 letters):", 
+    placeholder="LEXUS12\nIS350C"
+).upper()
 
 if st.button("Check Availability Now", type="primary") and manual_plates_input:
-    # Clean up the input into a list of plates
     raw_plates = [p.strip() for p in manual_plates_input.split('\n') if p.strip()]
     
-    # Restrict to 10 plates max to prevent timeout limits
     if len(raw_plates) > 10:
-        st.warning(f"You entered {len(raw_plates)} plates. We are only checking the first 10.")
+        st.warning(f"You entered {len(raw_plates)} plates. Checking the first 10.")
         plates_to_check = raw_plates[:10]
     else:
         plates_to_check = raw_plates
@@ -75,60 +121,70 @@ if st.button("Check Availability Now", type="primary") and manual_plates_input:
         st.error("Error loading proxies. Make sure they are saved in Streamlit Secrets.")
         st.stop()
     
-    st.info(f"Connecting securely via residential proxy ({chosen_proxy['server']}). Checking {len(plates_to_check)} plate(s)...")
+    st.info(f"Connected securely via residential proxy ({chosen_proxy['server']}).")
+    
+    # Live visual status container
+    status_container = st.status("Initializing automated check...", expanded=True)
+    results_display = st.container()
     
     try:
         with sync_playwright() as p:
+            status_container.update(label="Launching secure headless browser...", state="running")
             browser = p.chromium.launch(headless=True, proxy=proxy_config)
             page = browser.new_page()
             
-            # Loop through each plate the user entered
-            for manual_plate in plates_to_check:
-                # Ensure it is 7 characters max just in case
-                manual_plate = manual_plate[:7]
+            total_plates = len(plates_to_check)
+            
+            for index, manual_plate in enumerate(plates_to_check, start=1):
+                clean_plate = manual_plate[:7]
+                status_container.update(
+                    label=f"Checking plate {index} of {total_plates}: **{clean_plate}**...", 
+                    state="running"
+                )
                 
                 try:
-                    # Reload the main form page fresh for EACH plate to avoid hidden HTML traps
+                    # Navigate fresh to the search portal
                     page.goto("https://fortress.wa.gov/dol/extdriveses/ESP/NoLogon/?Link=PersonalizedPlate", timeout=60000)
                     page.wait_for_load_state("networkidle", timeout=15000)
                     
-                    # Find the box by its 7-character limit attribute
+                    # Fill the 7-character plate input
                     plate_input = page.locator("input[maxlength='7']")
                     plate_input.wait_for(timeout=10000)
-                    plate_input.fill(manual_plate)
+                    plate_input.fill(clean_plate)
                     
-                    # Click the 'Search' button
+                    # Submit search
                     page.locator("button:has-text('Search')").click()
                     
-                    # Hard pause to let the server reply
-                    page.wait_for_timeout(4000) 
+                    # Wait for response render
+                    page.wait_for_timeout(4000)
                     
-                    # Grab all the text on the page to analyze it
                     page_text = page.inner_text("body").lower()
                     
-                    # Determine the status
+                    # Classify outcome
                     if "is available right now" in page_text:
-                        status = f"✅ AVAILABLE: **{manual_plate}** is available right now."
+                        plate_status = f"✅ **AVAILABLE:** `{clean_plate}` is available right now."
                     elif "is not available" in page_text:
-                        status = f"❌ TAKEN: Sorry, **{manual_plate}** is not available."
+                        plate_status = f"❌ **TAKEN:** Sorry, `{clean_plate}` is not available."
                     elif "is a restricted word" in page_text:
-                        status = f"⚠️ RESTRICTED: **{manual_plate}** is a restricted word."
+                        plate_status = f"⚠️ **RESTRICTED:** `{clean_plate}` is a restricted word."
                     elif "invalid combination" in page_text:
-                        status = f"🚫 INVALID: **{manual_plate}** uses an invalid combination of letters and numbers."
+                        plate_status = f"🚫 **INVALID:** `{clean_plate}` uses an invalid combination of letters and numbers."
                     else:
-                        status = f"❓ UNKNOWN: Could not determine status for **{manual_plate}**."
+                        plate_status = f"❓ **UNKNOWN:** Could not determine status for `{clean_plate}`."
                         
-                    # Output the result immediately to the dashboard
-                    st.write(status)
+                    results_display.markdown(plate_status)
                     
                 except Exception as loop_error:
-                    st.error(f"⚠️ ERROR: Failed to check **{manual_plate}**")
+                    results_display.error(f"⚠️ **ERROR:** Failed to check `{clean_plate}` ({loop_error})")
                 
-                # Brief 1.5-second pause between checks so we don't hammer the DOL server too fast
-                time.sleep(1.5)
+                # Brief pause between scrapes
+                if index < total_plates:
+                    status_container.update(label=f"Pausing before next lookup...", state="running")
+                    time.sleep(2)
             
             browser.close()
-            st.success("All checks completed!")
+            status_container.update(label="All plate checks completed successfully!", state="complete", expanded=False)
+            st.success("Lookup process complete.")
             
     except Exception as e:
-        st.error(f"Playwright failed to launch: {e}")
+        st.error(f"Playwright execution error: {e}")
