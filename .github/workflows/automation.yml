@@ -23,9 +23,11 @@ jobs:
           playwright install chromium
 
       - name: Build Secrets File
+        env:
+          MY_SECRETS: ${{ secrets.STREAMLIT_SECRETS }}
         run: |
           mkdir -p .streamlit
-          echo "${{ secrets.STREAMLIT_SECRETS }}" > .streamlit/secrets.toml
+          echo "$MY_SECRETS" > .streamlit/secrets.toml
 
       - name: Run Engine
         run: python checker.py
